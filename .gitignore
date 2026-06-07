@@ -1,0 +1,55 @@
+# 敏感信息（绝对不能上传！）
+.env
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+docs/_build/
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 数据库文件（包含真实数据，不上传）
+*.db
+*.sqlite
+*.sqlite3
+
+# FAISS 索引文件（太大，可以重新生成）
+*.bin
+
+# 临时文件
+*.txt
+*.log
+.DS_Store
+Thumbs.db
+
+# 测试结果（可选保留）
+test_*.py
+
+# 旧的演示文件（保留核心文件）
+task4_demo.py
+task5_rag_demo.py
+task6_agent_demo.py
+demo.py
+caimei_app.py
+
+# 新闻抓取工具（可选保留）
+korean_news_fetcher.py
+topic_news_fetcher.py
