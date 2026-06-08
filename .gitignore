@@ -53,3 +53,6 @@ caimei_app.py
 # 新闻抓取工具（可选保留）
 korean_news_fetcher.py
 topic_news_fetcher.py
+
+# ngrok
+ngrok.exe
