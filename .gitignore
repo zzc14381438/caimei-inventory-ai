@@ -36,6 +36,7 @@ ENV/
 
 # 临时文件
 *.txt
+!requirements.txt
 *.log
 .DS_Store
 Thumbs.db
