@@ -185,6 +185,7 @@ def chat():
             {"messages": [{"role": "user", "content": user_message}]},
             config,
             stream_mode="values",
+            configurable={"timeout": 60},
         ):
             if "messages" not in event:
                 continue
@@ -207,15 +208,53 @@ def chat():
         })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "reply": f"❌ 处理出错：{str(e)}",
             "error": str(e),
+            "traceback": traceback.format_exc()[-300:],
         }), 500
 
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify(system_info)
+    """健康检查 + 诊断信息"""
+    info = dict(system_info)
+    info["agent_ready"] = agent is not None
+    info["deepseek_key_set"] = bool(os.getenv("DEEPSEEK_API_KEY"))
+    return jsonify(info)
+
+
+@app.route("/api/diag", methods=["GET"])
+def diag():
+    """诊断端点：测试 DeepSeek API 连通性"""
+    key = os.getenv("DEEPSEEK_API_KEY", "")
+    key_preview = key[:5] + "..." if key else "(未设置)"
+    try:
+        from langchain_openai import ChatOpenAI
+        test_llm = ChatOpenAI(
+            model="deepseek-chat",
+            api_key=key,
+            base_url="https://api.deepseek.com",
+            temperature=0,
+            timeout=15,
+        )
+        resp = test_llm.invoke("回复：OK")
+        return jsonify({
+            "deepseek_api": "OK",
+            "test_response": resp.content[:100] if resp else "空",
+            "key_preview": key_preview,
+            "agent_ready": agent is not None,
+            "tools": system_info.get("tool_count", 0),
+        })
+    except Exception as e:
+        return jsonify({
+            "deepseek_api": "FAILED",
+            "error": str(e)[:300],
+            "key_preview": key_preview,
+            "agent_ready": agent is not None,
+        }), 500
 
 
 # ============ 启动 ============
