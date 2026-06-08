@@ -178,28 +178,33 @@ def chat():
 
     try:
         config = {"configurable": {"thread_id": "caimei-session"}}
+
+        # 使用 invoke 而非 stream，避免流式响应格式兼容问题
+        result = agent.invoke(
+            {"messages": [{"role": "user", "content": user_message}]},
+            config,
+        )
+
+        messages = result.get("messages", [])
         final_message = ""
         tool_calls_seen = []
 
-        for event in agent.stream(
-            {"messages": [{"role": "user", "content": user_message}]},
-            config,
-            stream_mode="values",
-            configurable={"timeout": 60},
-        ):
-            if "messages" not in event:
-                continue
-            last_msg = event["messages"][-1]
+        # 收集所有工具调用名
+        for msg in messages:
+            tc_list = getattr(msg, "tool_calls", None) or []
+            for tc in tc_list:
+                tn = tc.get("name", "unknown")
+                if tn not in tool_calls_seen:
+                    tool_calls_seen.append(tn)
 
-            if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                for tc in last_msg.tool_calls:
-                    tool_name = tc.get("name", "unknown")
-                    if tool_name not in tool_calls_seen:
-                        tool_calls_seen.append(tool_name)
-
-            if hasattr(last_msg, "content") and last_msg.content:
-                if not hasattr(last_msg, "tool_calls") or not last_msg.tool_calls:
-                    final_message = last_msg.content
+        # 取最后一条 AI 回复（有内容且不是工具调用）
+        for msg in reversed(messages):
+            if getattr(msg, "type", "") == "ai":
+                content = getattr(msg, "content", "")
+                tc = getattr(msg, "tool_calls", None)
+                if content and (not tc or len(tc) == 0):
+                    final_message = content
+                    break
 
         return jsonify({
             "reply": final_message or "抱歉，未能生成回复，请重试。",
@@ -213,7 +218,6 @@ def chat():
         return jsonify({
             "reply": f"❌ 处理出错：{str(e)}",
             "error": str(e),
-            "traceback": traceback.format_exc()[-300:],
         }), 500
 
 
