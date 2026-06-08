@@ -19,9 +19,114 @@ DB_PATH = os.path.join(BASE_DIR, "inventory.db")
 _CACHE = None
 
 
+# ========== 数据库自动初始化 ==========
+
+def _init_db_if_needed():
+    """首次启动时自动建表+从 product_catalog.json 导入（如果表不存在）"""
+    # 先检查文件是否已经是有效的数据库
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("SELECT 1 FROM products LIMIT 1")
+        conn.close()
+        return  # 表已存在，跳过
+    except sqlite3.OperationalError:
+        pass  # 表不存在
+    conn.close()
+
+    # 需要初始化：从 product_catalog.json 导入
+    import json
+    json_path = os.path.join(BASE_DIR, "product_catalog.json")
+    if not os.path.exists(json_path):
+        raise FileNotFoundError(f"product_catalog.json 不存在: {json_path}")
+
+    print(f"[DB-INIT] 初始化数据库，从 {json_path} 加载...")
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    products = data.get("products", [])
+    print(f"[DB-INIT] 共 {len(products)} 款商品")
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
+    c = conn.cursor()
+
+    # 建表
+    c.executescript("""
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sku TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            status TEXT DEFAULT '正常',
+            purchase_price REAL DEFAULT 0,
+            retail_price REAL DEFAULT 0,
+            supplier TEXT DEFAULT '',
+            category TEXT DEFAULT '',
+            style TEXT DEFAULT '',
+            season TEXT DEFAULT '',
+            fabric TEXT DEFAULT '',
+            is_special TEXT DEFAULT '否',
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+        );
+        CREATE TABLE IF NOT EXISTS stock (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER NOT NULL,
+            sku TEXT NOT NULL,
+            color TEXT NOT NULL,
+            size TEXT NOT NULL,
+            stock INTEGER DEFAULT 0,
+            FOREIGN KEY (product_id) REFERENCES products(id),
+            UNIQUE(sku, color, size)
+        );
+        CREATE TABLE IF NOT EXISTS sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER,
+            sku TEXT NOT NULL,
+            color TEXT NOT NULL,
+            size TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            unit_price REAL NOT NULL,
+            total_amount REAL NOT NULL,
+            sale_date TEXT DEFAULT (datetime('now', 'localtime')),
+            note TEXT DEFAULT '',
+            FOREIGN KEY (product_id) REFERENCES products(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_stock_sku ON stock(sku);
+        CREATE INDEX IF NOT EXISTS idx_sales_sku ON sales(sku);
+        CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date);
+    """)
+
+    # 插入数据
+    total_stock = 0
+    for p in products:
+        sku = p["sku"]
+        c.execute(
+            """INSERT INTO products
+               (sku, name, status, purchase_price, retail_price,
+                supplier, category, style, season, fabric, is_special)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (sku, p["name"], p.get("status", "正常"),
+             p.get("purchase_price", 0), p.get("retail_price", 0),
+             p.get("supplier", ""), p.get("category", ""),
+             p.get("style", ""), p.get("season", ""),
+             p.get("fabric", ""), p.get("is_special", "否")),
+        )
+        pid = c.lastrowid
+        for cs in p.get("color_size_stock", []):
+            c.execute(
+                "INSERT INTO stock (product_id, sku, color, size, stock) VALUES (?,?,?,?,?)",
+                (pid, sku, cs["color"], cs["size"], cs["stock"]),
+            )
+            total_stock += 1
+
+    conn.commit()
+    conn.close()
+    print(f"[DB-INIT] 完成: {len(products)} products, {total_stock} stock rows")
+
+
 # ========== 数据库连接 ==========
 
 def _get_conn():
+    _init_db_if_needed()  # 确保表存在
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # 让结果可以通过列名访问
     return conn
