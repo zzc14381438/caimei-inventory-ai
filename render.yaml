@@ -2,7 +2,7 @@ services:
   - type: web
     name: caimei-inventory-ai
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python migrate_to_sqlite.py
     startCommand: python caimei_api.py
     envVars:
       - key: DEEPSEEK_API_KEY
